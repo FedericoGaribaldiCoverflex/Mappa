@@ -49,6 +49,17 @@ select:focus, input:focus { outline: none; border-color: #FF6B35; }
 .loc-item:hover { background:#f5f5f5; }
 .loc-item-name { font-weight:500; }
 .loc-item-detail { color:#888; font-size:11px; }
+
+#loc-wrap { position:relative; }
+#loc-input { padding:5px 9px 5px 28px; border:1px solid #ddd; border-radius:6px; font-size:12px; width:200px; background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.5'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 7px center; }
+#loc-input:focus { outline:none; border-color:#FF6B35; }
+#loc-sug { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 8px 8px; z-index:9999; max-height:220px; overflow-y:auto; box-shadow:0 6px 16px rgba(0,0,0,.12); display:none; }
+#loc-sug.open { display:block; }
+.lsi { padding:8px 12px; font-size:12px; cursor:pointer; border-bottom:1px solid #f0f0f0; line-height:1.4; }
+.lsi:last-child { border-bottom:none; }
+.lsi:hover { background:#f5f5f5; }
+.lsi b { color:#222; }
+.lsi small { color:#888; display:block; font-size:11px; margin-top:1px; }
 </style>
 </head>
 <body>
@@ -73,10 +84,7 @@ select:focus, input:focus { outline: none; border-color: #FF6B35; }
     </select>
     <input id="s-txt" type="text" placeholder="🔍 Cerca nome..." oninput="render()" style="width:160px">
     <button class="btn" onclick="reset()">✕ Reset</button>
-    <div id="loc-wrap">
-      <input type="text" id="loc-input" placeholder="Vai a città..." autocomplete="off"
-             oninput="onLocInput()" onkeydown="if(event.key==='Enter')locSearch()">
-      <div id="loc-suggestions"></div>
+    <div id="loc-wrap"><input type="text" id="loc-input" placeholder="🔍 Cerca indirizzo..." autocomplete="off" oninput="onLocIn()" onkeydown="onLocKey(event)"><div id="loc-sug"></div></div>
     </div>
 
   </div>
@@ -163,6 +171,51 @@ function reset(){
 }
 
 buildFilters(); render();
+
+// ── RICERCA INDIRIZZO ──────────────────────────────────────────
+let _locT=null,_locRes=[];
+function onLocIn(){
+  clearTimeout(_locT);
+  const q=document.getElementById('loc-input').value.trim();
+  const sug=document.getElementById('loc-sug');
+  if(q.length<3){sug.classList.remove('open');return;}
+  _locT=setTimeout(()=>_locFetch(q),300);
+}
+async function _locFetch(q){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`,{headers:{'Accept-Language':'it'}});
+    _locRes=await r.json();
+    const sug=document.getElementById('loc-sug');
+    if(!_locRes.length){sug.innerHTML='<div class="lsi" style="color:#999">Nessun risultato</div>';sug.classList.add('open');return;}
+    sug.innerHTML=_locRes.map((x,i)=>{
+      const a=x.address||{};
+      const top=(a.road||a.pedestrian||a.amenity||a.shop||x.display_name.split(',')[0]);
+      const loc=[a.city||a.town||a.village||a.municipality,a.state].filter(Boolean).join(', ');
+      return `<div class="lsi" onclick="_locGo(${i})"><b>${top}</b>${loc?`<small>${loc}</small>`:''}</div>`;
+    }).join('');
+    sug.classList.add('open');
+  }catch(e){}
+}
+function _locGo(i){
+  const x=_locRes[i];
+  if(!x)return;
+  document.getElementById('loc-sug').classList.remove('open');
+  document.getElementById('loc-input').value=x.display_name.split(',').slice(0,2).join(',');
+  map.setView([parseFloat(x.lat),parseFloat(x.lon)],15);
+}
+function onLocKey(e){
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(_locRes.length)_locGo(0);
+    else{
+      const q=document.getElementById('loc-input').value.trim();
+      if(q) _locFetch(q).then(()=>{if(_locRes.length)_locGo(0);});
+    }
+  }
+  if(e.key==='Escape') document.getElementById('loc-sug').classList.remove('open');
+}
+document.addEventListener('click',e=>{if(!document.getElementById('loc-wrap').contains(e.target)) document.getElementById('loc-sug').classList.remove('open');});
+// ──────────────────────────────────────────────────────────────
 </script>
 </body>
 </html>
